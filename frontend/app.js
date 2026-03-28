@@ -173,6 +173,11 @@ async function initAudio() {
   audioWs = new WebSocket(wsUrl);
   audioWs.binaryType = 'arraybuffer';
 
+  // FIX: Tell the backend we are ready to receive audio chunks
+  audioWs.onopen = () => {
+    audioWs.send('ready'); 
+  };
+
   audioWs.addEventListener('message', ({ data }) => {
     // Decode Int16 interleaved stereo → Float32 interleaved, send to worklet
     const int16  = new Int16Array(data);
