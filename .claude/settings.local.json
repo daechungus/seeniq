@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:8000/config)",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s http://localhost:8000/pins)",
+      "Bash(curl -s -X POST http://localhost:8000/scene/preset/energetic)",
+      "Bash(uvicorn main:app --reload --port 8000)",
+      "Bash(python -m uvicorn --version)",
+      "Bash(conda run:*)",
+      "Bash(conda env:*)",
+      "Bash(python3 -c \":*)"
+    ]
+  }
+}

@@ -1,214 +1,304 @@
 /* ============================================================
-   MusicMap — Full-screen map layout
+   Seenic — Green-on-black LCD + iPod Classic click wheel
    ============================================================ */
 
+@import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600&family=Press+Start+2P&display=swap");
+
 :root {
-  --bg:        #0d0d12;
-  --surface:   #16161f;
-  --border:    #2a2a3a;
-  --accent:    #7c6af7;
-  --accent2:   #4fc3f7;
-  --text:      #e8e8f0;
-  --muted:     #6b6b88;
-  --danger:    #e05a5a;
-  --radius:    16px;
-  --sheet-h:   160px;
-  --font:      'Inter', system-ui, sans-serif;
+  --lcd-bg:       #0a120a;
+  --lcd-green:    #72b872;
+  --lcd-mid:      #4a8a50;
+  --lcd-dim:      #2a5230;
+  --lcd-black:    #060d06;
+  --device-bg:    #111111;
+  --device-edge:  #2e2e2e;
+  --device-dark:  #080808;
+  --wheel-bg:     #161616;
+  --wheel-ring:   #1e1e1e;
+  --wheel-edge:   #2a2a2a;
+  --danger:       #cc4444;
+  --player-h:     54vh;
+  --header-h:     24px;
+  --lcd-h:        80px;
+  --font-pixel:   "Press Start 2P", monospace;
+  --font-track:   "Chakra Petch", system-ui, sans-serif;
 }
 
+[hidden] { display: none !important; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
-  -webkit-font-smoothing: antialiased;
-}
-
-/* ── Map fills the whole screen ─────────────────────────────── */
-#map {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-}
-
-/* Dark tile filter */
-#map .leaflet-tile {
-  filter: brightness(0.55) saturate(0.7) hue-rotate(190deg);
-}
-
-/* ── Top bar ─────────────────────────────────────────────────── */
-#topbar {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 20px;
-  background: linear-gradient(to bottom, rgba(13,13,18,0.95), transparent);
-  pointer-events: none;
-}
-
-.logo {
-  font-size: 1.3rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* Status dot */
-.dot-idle    { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
-.dot-active  { width: 10px; height: 10px; border-radius: 50%; background: #4caf50;
-               box-shadow: 0 0 8px #4caf50; animation: pulse-dot 2s ease-in-out infinite; }
-.dot-loading { width: 10px; height: 10px; border-radius: 50%; background: var(--accent2);
-               animation: pulse-dot 0.8s ease-in-out infinite; }
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.3; }
-}
-
-/* ── Now-playing bottom sheet ────────────────────────────────── */
-#now-playing {
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  z-index: 10;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  border-radius: var(--radius) var(--radius) 0 0;
-  overflow: hidden;
-  transition: transform 0.3s ease;
-}
-
-#zone-color-bar {
-  height: 4px;
-  background: var(--accent);
-  transition: background 0.6s ease;
-}
-
-#np-content {
-  padding: 14px 20px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-#np-place {
-  font-size: 1rem;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: opacity 0.3s;
-}
-
-#np-meta {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.badge {
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-}
-
-.badge.secondary {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted);
-}
-
-/* ── Waveform ────────────────────────────────────────────────── */
-#waveform {
-  width: 100%;
-  height: 48px;
-  border-radius: 8px;
-  background: var(--bg);
-}
-
-/* ── FAB play button ─────────────────────────────────────────── */
-.fab {
-  position: fixed;
-  bottom: calc(var(--sheet-h) + 16px);
-  right: 20px;
-  z-index: 20;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  border: none;
-  cursor: pointer;
-  font-size: 1.2rem;
+  height: 100%; width: 100%; overflow: hidden;
+  background: #000;
+  font-family: var(--font-lcd);
+  -webkit-font-smoothing: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
-  color: #fff;
-  box-shadow: 0 4px 20px rgba(124, 106, 247, 0.5);
-  transition: transform 0.15s, box-shadow 0.15s;
 }
 
-.fab:active { transform: scale(0.93); }
-
-.fab.playing {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: none;
-  color: var(--text);
-}
-
-/* ── Error toast ─────────────────────────────────────────────── */
-#error-toast {
-  position: fixed;
-  top: 64px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 30;
-  padding: 10px 18px;
-  border-radius: 999px;
-  background: #2a1414;
-  border: 1px solid var(--danger);
-  color: var(--danger);
-  font-size: 0.8rem;
-  white-space: nowrap;
-  max-width: 90vw;
+/* ── Phone shell — constrains to mobile width on desktop ────*/
+#shell {
+  position: relative;
+  width: min(100vw, 390px);
+  height: 100vh;
   overflow: hidden;
-  text-overflow: ellipsis;
+  background: var(--device-dark);
+  /* Desktop: subtle phone outline */
+  box-shadow: 0 0 0 1px #1a1a1a, 0 0 60px rgba(0,0,0,0.8);
 }
 
-/* ── Leaflet overrides ───────────────────────────────────────── */
-.leaflet-control-zoom {
-  border: 1px solid var(--border) !important;
-  background: var(--surface) !important;
+/* ── Map ────────────────────────────────────────────────────*/
+#map {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: var(--player-h);
+  z-index: 0;
+}
+#map::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0,5,0,0.65) 100%);
+  pointer-events: none; z-index: 1;
 }
 
-.leaflet-control-zoom a {
-  color: var(--text) !important;
-  background: var(--surface) !important;
-  border-bottom: 1px solid var(--border) !important;
+/* ── Scan overlay ───────────────────────────────────────────*/
+#scan-overlay {
+  position: absolute; inset: 0; z-index: 50;
+  background: var(--lcd-black);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+#scan-overlay::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px, transparent 2px,
+    rgba(0,0,0,0.25) 2px, rgba(0,0,0,0.25) 4px
+  );
+  pointer-events: none; z-index: 1;
+}
+#scan-preview {
+  width: 100%; max-height: 60vh; object-fit: cover;
+  filter: brightness(0.75) saturate(0) sepia(0.5) hue-rotate(75deg) contrast(1.2);
+  image-rendering: pixelated;
+}
+#scan-line {
+  position: absolute; top: 8%; left: 0; right: 0; height: 2px;
+  background: var(--lcd-green);
+  box-shadow: 0 0 6px var(--lcd-green), 0 0 18px var(--lcd-green);
+  animation: scan-sweep 1.8s linear infinite; z-index: 2;
+}
+@keyframes scan-sweep {
+  0%   { transform: translateY(0);    opacity: 1; }
+  95%  { transform: translateY(70vh); opacity: 1; }
+  100% { transform: translateY(70vh); opacity: 0; }
+}
+#scan-label {
+  position: absolute; bottom: calc(var(--player-h) + 20px);
+  font-family: var(--font-pixel); font-size: 0.45rem;
+  color: var(--lcd-green); letter-spacing: 0.2em;
+  text-shadow: 0 0 8px var(--lcd-green);
+  animation: blink-txt 0.7s step-end infinite; z-index: 2;
+}
+@keyframes blink-txt {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
 }
 
-.leaflet-control-zoom a:hover {
-  background: var(--bg) !important;
+/* ── Device shell ───────────────────────────────────────────*/
+#device {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: var(--player-h);
+  z-index: 10;
+  background: var(--device-bg);
+  border-top: 3px solid var(--device-edge);
+  box-shadow: 0 -3px 0 var(--device-dark);
+  display: flex; flex-direction: column;
+  align-items: center;
 }
 
-.leaflet-control-attribution {
-  background: rgba(13,13,18,0.7) !important;
-  color: var(--muted) !important;
-  font-size: 0.6rem !important;
+/* ── Header strip ───────────────────────────────────────────*/
+#device-header {
+  width: 100%;
+  height: var(--header-h); flex-shrink: 0;
+  background: var(--device-dark); border-bottom: 1px solid #1a1a1a;
+  display: flex; align-items: center; padding: 0 14px; gap: 8px;
+}
+.logo {
+  font-family: var(--font-pixel); font-size: 0.4rem;
+  color: var(--lcd-green); letter-spacing: 0.25em;
+  text-shadow: 0 0 10px var(--lcd-green);
+}
+#gps-tag {
+  font-family: var(--font-pixel); font-size: 0.28rem;
+  color: var(--lcd-dim); letter-spacing: 0.1em; margin-left: auto;
 }
 
-.leaflet-control-attribution a { color: var(--muted) !important; }
+/* LED */
+.dot-idle    { width: 7px; height: 7px; border-radius: 1px; background: var(--lcd-dim); }
+.dot-active  { width: 7px; height: 7px; border-radius: 1px; background: var(--lcd-green);
+               box-shadow: 0 0 6px var(--lcd-green); animation: led-pulse 2s step-end infinite; }
+.dot-loading { width: 7px; height: 7px; border-radius: 1px; background: var(--lcd-mid);
+               animation: led-pulse 0.35s step-end infinite; }
+@keyframes led-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.1; } }
+
+/* ── LCD panel ──────────────────────────────────────────────*/
+#lcd-panel {
+  width: calc(100% - 16px);
+  height: var(--lcd-h);
+  flex-shrink: 0;
+  margin: 6px 8px 4px;
+  background: var(--lcd-bg);
+  border: 2px solid var(--device-edge);
+  box-shadow: inset 0 0 0 1px #000, inset 2px 2px 8px rgba(0,0,0,0.9);
+  border-radius: 2px;
+  position: relative; overflow: hidden;
+}
+#lcd-panel::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px, transparent 1px,
+    rgba(0,0,0,0.1) 1px, rgba(0,0,0,0.1) 2px
+  );
+  pointer-events: none; z-index: 5;
+}
+#zone-color-bar {
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--lcd-mid); z-index: 6; transition: background 1s step-end;
+}
+#lcd-content {
+  position: absolute; inset: 5px 8px;
+  display: flex; align-items: center; gap: 9px; z-index: 2;
+}
+#album-art {
+  flex-shrink: 0; width: 48px; height: 48px;
+  border: 1px solid var(--lcd-dim); background: var(--lcd-black);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.6rem; color: var(--lcd-green);
+  text-shadow: 0 0 10px var(--lcd-green);
+}
+#track-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+#np-place {
+  font-family: var(--font-track); font-size: 0.72rem; font-weight: 600;
+  color: var(--lcd-green);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  letter-spacing: 0.03em; line-height: 1.3;
+}
+#np-meta { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.badge {
+  font-family: var(--font-track); font-size: 0.6rem; font-weight: 400;
+  letter-spacing: 0.03em; text-transform: lowercase;
+  padding: 1px 5px; border-radius: 2px;
+  border: 1px solid var(--lcd-mid); color: var(--lcd-green);
+  background: transparent; line-height: 1.6; white-space: nowrap;
+}
+.badge.dim, .badge.secondary { color: var(--lcd-mid); border-color: var(--lcd-dim); }
+#waveform { width: 100%; height: 14px; background: transparent; }
+
+/* ── Click wheel ────────────────────────────────────────────*/
+#wheel-area {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 6px;
+}
+
+#click-wheel {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #242424 0%, #111111 60%, #0a0a0a 100%);
+  border: 2px solid var(--wheel-edge);
+  box-shadow:
+    0 4px 12px rgba(0,0,0,0.8),
+    0 1px 0 rgba(255,255,255,0.04) inset,
+    0 -2px 0 #000 inset;
+}
+
+/* Ring labels */
+.wheel-label {
+  position: absolute;
+  font-family: var(--font-pixel);
+  font-size: 0.56rem;
+  color: var(--lcd-mid);
+  letter-spacing: 0.1em;
+  background: none;
+  border: none;
+  cursor: default;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.wheel-top    { top: 24px;  left: 50%; transform: translateX(-50%); }
+.wheel-left   { left: 16px;  top: 50%;  transform: translateY(-50%); }
+.wheel-right  { right: 16px; top: 50%;  transform: translateY(-50%); }
+
+/* Play button — bottom of ring */
+.wheel-bottom {
+  bottom: 9px;
+  left: 50%; transform: translateX(-50%);
+  color: var(--lcd-green);
+  text-shadow: 0 0 6px var(--lcd-green);
+  cursor: pointer;
+  font-size: 0.55rem;
+  padding: 2px 4px 8px;
+  transition: opacity 0.08s;
+}
+.wheel-bottom:active { opacity: 0.5; }
+.wheel-bottom.playing { color: var(--lcd-mid); text-shadow: none; }
+
+/* Center button */
+.wheel-center {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 58px; height: 58px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #1e1e1e, #0a0a0a);
+  border: 1px solid var(--wheel-edge);
+  box-shadow:
+    0 2px 6px rgba(0,0,0,0.9),
+    inset 0 1px 0 rgba(255,255,255,0.05);
+  color: var(--lcd-green);
+  font-family: var(--font-pixel);
+  font-size: 0.3rem;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 6px var(--lcd-green);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none;
+  transition: box-shadow 0.05s, transform 0.05s;
+}
+.wheel-center:active {
+  transform: translate(-50%, -50%) scale(0.95);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.9), inset 0 2px 4px rgba(0,0,0,0.6);
+}
+.wheel-center:disabled { opacity: 0.3; cursor: default; }
+
+/* ── Error toast ────────────────────────────────────────────*/
+#error-toast {
+  position: absolute; top: 38%; left: 50%; transform: translateX(-50%);
+  z-index: 30; padding: 8px 14px; background: var(--lcd-bg);
+  border: 2px solid var(--danger); color: var(--danger);
+  font-family: var(--font-pixel); font-size: 0.32rem;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  white-space: nowrap; max-width: 90vw;
+  overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 0 20px rgba(255,51,51,0.3);
+}
+
+/* ── Google Maps overrides ──────────────────────────────────*/
+.gm-style .gm-style-iw-c {
+  background: var(--lcd-bg) !important; border: 1px solid var(--lcd-mid) !important;
+  color: var(--lcd-green) !important; font-family: var(--font-pixel) !important;
+  font-size: 0.32rem !important; border-radius: 0 !important;
+  box-shadow: 0 0 12px rgba(51,255,51,0.2) !important;
+}
+.gm-style .gm-style-iw-tc::after { background: var(--lcd-mid) !important; }
+.gm-bundled-control, .gm-fullscreen-control, .gmnoprint, .gm-style-cc { display: none !important; }

@@ -3,44 +3,67 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>MusicMap</title>
-
-  <!-- Leaflet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
+  <title>Seenic</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600&family=Press+Start+2P&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <!-- Full-screen map -->
-  <div id="map"></div>
+  <div id="shell">
 
-  <!-- Top bar -->
-  <div id="topbar">
-    <span class="logo">MusicMap</span>
-    <div id="status-dot" class="dot-idle"></div>
-  </div>
+    <div id="map"></div>
 
-  <!-- Now-playing card (bottom sheet) -->
-  <div id="now-playing">
-    <div id="zone-color-bar"></div>
-    <div id="np-content">
-      <div id="np-place">Tap play to start</div>
-      <div id="np-meta">
-        <span id="np-mood" class="badge">—</span>
-        <span id="np-genre" class="badge secondary">—</span>
-        <span id="np-bpm" class="badge secondary">— BPM</span>
-      </div>
-      <canvas id="waveform"></canvas>
+    <div id="scan-overlay" hidden>
+      <video id="scan-preview" autoplay playsinline muted></video>
+      <div id="scan-line"></div>
+      <div id="scan-label">SCANNING...</div>
     </div>
+
+    <canvas id="snapshot" hidden></canvas>
+
+    <div id="device">
+
+      <div id="device-header">
+        <span class="logo">SEENIC</span>
+        <span id="gps-tag">GPS&nbsp;NAV</span>
+        <div id="status-dot" class="dot-idle"></div>
+      </div>
+
+      <div id="lcd-panel">
+        <div id="zone-color-bar"></div>
+        <div id="lcd-content">
+          <!-- Music note icon -->
+          <div id="album-art">&#9834;</div>
+
+          <div id="track-info">
+            <div id="np-place">TAP PLAY TO START</div>
+            <div id="np-meta">
+              <span id="np-mood"  class="badge">--</span>
+              <span id="np-genre" class="badge dim">--</span>
+              <span id="np-bpm"   class="badge dim">-- BPM</span>
+            </div>
+            <canvas id="waveform"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="wheel-area">
+        <div id="click-wheel">
+          <span class="wheel-label wheel-top">MENU</span>
+          <span class="wheel-label wheel-left">&#9664;&#9664;</span>
+          <span class="wheel-label wheel-right">&#9654;&#9654;</span>
+          <button type="button" id="btn-play" class="wheel-label wheel-bottom" aria-label="Play">&#9654;II</button>
+          <button type="button" id="btn-scan" class="wheel-center" hidden aria-label="Scan scene">SCAN</button>
+        </div>
+      </div>
+
+    </div>
+
+    <div id="error-toast" hidden></div>
+
   </div>
-
-  <!-- Play button (floating) -->
-  <button type="button" id="btn-play" class="fab" aria-label="Play">▶</button>
-
-  <!-- Error toast -->
-  <div id="error-toast" hidden></div>
 
   <script src="app.js"></script>
 </body>

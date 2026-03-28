@@ -28,6 +28,10 @@ LYRIA_BITS = 16
 AudioCallback = Callable[[bytes], Any]
 
 
+def _lerp(a: float, b: float, t: float) -> float:
+    return a + (b - a) * t
+
+
 class LyriaSession:
     """
     Wraps a single Lyria RealTime session.
@@ -118,6 +122,32 @@ class LyriaSession:
                 guidance=scene.guidance,
             )
         )
+
+    async def interpolate_to_scene(self, target: SceneDescription, steps: int = 3) -> None:
+        """
+        Gradually steer Lyria toward `target` over `steps` updates spaced 0.8s apart.
+        Used for passive GPS-triggered transitions to avoid jarring jumps (e.g. library→gym).
+        For manual scans, call update_scene() directly instead.
+        """
+        if not self._current_scene:
+            await self.update_scene(target)
+            return
+
+        src = self._current_scene
+        for i in range(1, steps + 1):
+            t = i / steps
+            interp = SceneDescription(
+                mood=target.mood,
+                energy=_lerp(src.energy, target.energy, t),
+                setting=target.setting,
+                suggested_genre=target.suggested_genre,
+                suggested_bpm=round(_lerp(src.suggested_bpm, target.suggested_bpm, t)),
+                density=_lerp(src.density, target.density, t),
+                guidance=target.guidance,
+            )
+            await self.update_scene(interp)
+            if i < steps:
+                await asyncio.sleep(0.8)
 
     # ------------------------------------------------------------------
     # Internal helpers
