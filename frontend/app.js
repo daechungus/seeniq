@@ -9,7 +9,11 @@
  * Map:   Google Maps JavaScript API (key loaded from /config).
  */
 
-const BACKEND = `${location.protocol}//${location.hostname}:8000`;
+// On Railway/production the frontend is served by the same server, no port needed.
+// Locally it runs on :8000.
+const BACKEND = location.hostname === 'localhost'
+  ? `${location.protocol}//${location.hostname}:8000`
+  : `${location.protocol}//${location.host}`;
 let LOCATE_INTERVAL_MS = 5_000;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────

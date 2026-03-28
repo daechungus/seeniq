@@ -2,30 +2,105 @@
 
 > Built for the Google Gemini UCLA Hackathon 2026
 
-Seenic is a crowdsourced music map. Walk anywhere and AI composes music that matches your surroundings in real time. Scan your environment to pin that soundtrack to the map — anyone who walks into your zone later hears what you heard.
+---
+
+## Inspiration
+
+We've all had the experience of walking into a place and feeling like it needs a soundtrack — a quiet library that deserves hushed piano, a packed gym that should be pounding with energy, a rooftop at golden hour that feels cinematic. Music shapes how we experience spaces, but we've always had to curate it manually.
+
+Pokémon GO proved that people will attach meaning to physical locations and share it with strangers. Spotify proved that music is deeply tied to context. We asked: what if those two ideas merged? What if the world itself had a living, evolving musical layer — one that you could contribute to and experience just by walking through it?
+
+That's Seenic.
 
 ---
 
-## How It Works
+## What It Does
 
-**Passive mode** — GPS polls your location every 5 seconds. The backend reverse-geocodes your coordinates and maps the place type (park, café, nightclub, library, etc.) to a music scene. Lyria 3 generates a matching audio clip that loops until the scene changes.
+Seenic generates original music in real time based on where you are and what you see.
 
-**Active scan** — Tap SCAN. Your camera captures a frame. Gemini Vision analyzes the scene and returns a structured description: mood, energy, BPM, genre. Lyria immediately generates music for that exact moment. A pin is dropped on the map with a 30-meter influence radius.
+**Passive mode:** As you move through the world, your GPS location is reverse-geocoded and matched to a place archetype — park, café, nightclub, library, hospital, beach, and 18 others. Lyria 3 composes music that fits that context. Walk from a quiet residential street into a commercial district and the music shifts with you.
 
-**Location memory** — Scanned pins persist for 15 minutes. Anyone who walks within 30m of your pin hears your soundtrack. A pulsing ZONE badge appears on their player when they're inside someone else's zone. Pins are shared server-side across all connected users.
+**Active scan:** Tap the camera button. Seenic opens your camera, captures a frame, and sends it to Gemini Vision. Gemini doesn't just see "outdoor space" — it reads the energy, the lighting, the mood, the density of the scene, and returns a structured musical brief: genre, BPM, emotional tone. Lyria composes something for that exact moment.
+
+**The map:** Every scan drops a pin on a shared map with a 30-meter influence radius. That pin lives for 15 minutes. Anyone who walks into that zone — from anywhere in the world — hears what you heard. A pulsing ZONE badge appears on their player. The musical layer of the world is built, one scan at a time.
 
 ---
 
-## Tech Stack
+## How We Built It
 
-| Layer | Technology |
-|---|---|
-| Frontend | Vanilla HTML / JS / CSS, Google Maps JavaScript API |
-| Backend | Python FastAPI + uvicorn |
-| Vision AI | Gemini 2.5 Flash Lite — scene analysis from camera frames |
-| Music AI | Lyria 3 Clip Preview — generates ~47s MP3 clips from text prompts |
-| Geocoding | Nominatim (OpenStreetMap) — free, no key required |
-| Maps | Google Maps JavaScript API |
+The stack is intentionally minimal so the AI does the heavy lifting.
+
+**Frontend** — Vanilla HTML, CSS, and JavaScript. A Google Maps view occupies the top half; a custom iPod Classic–inspired click wheel player sits on the bottom. As you move, colored breadcrumb circles paint your trail on the map. Scan pins appear as arrows with glowing coverage rings. A live waveform visualizer pulses with the music.
+
+**Backend** — Python FastAPI server with a handful of endpoints. GPS coordinates come in, Nominatim (OpenStreetMap) reverse-geocodes them for free, and a scene preset is selected from 22 hand-tuned place archetypes. The server holds all pins in a shared in-memory store — no database needed for a demo.
+
+**Gemini 2.5 Flash Lite** handles vision. We send it a JPEG frame and a strict prompt that forces structured JSON output: mood, energy (0–1), BPM, genre, musical density, and a guidance scalar. The response reliably parses into a `SceneDescription` object that drives Lyria.
+
+**Lyria 3 Clip Preview** generates the music. We pass a text prompt built from the scene description and receive a ~47-second MP3 that loops until the scene changes. When it does, a new clip generates in the background while the current one keeps playing.
+
+The landing page features a Three.js particle globe with an intro animation — particles flow from scattered jitter into a sphere — and an exit animation where the globe expands outward into nothing as you enter the map.
+
+---
+
+## Challenges We Ran Into
+
+**Gemini model availability.** Our initial target model (`gemini-2.0-flash`) returned 404 on our API key mid-build. We had to write a live model discovery script to probe which models were actually accessible, eventually landing on `gemini-2.5-flash-lite` for vision — which turned out to be faster anyway.
+
+**Lyria RealTime vs. Lyria 3.** The architecture we envisioned used `lyria-realtime-exp` — a persistent WebSocket that streams infinite music and morphs in real time as you steer it with new prompts. That's the right model for Seenic. It returned HTTP 404 for all keys we tested. We pivoted to clip-based generation with `lyria-3-clip-preview`, which works and sounds great, but doesn't morph continuously.
+
+**Video vs. image for Gemini Vision.** We originally wanted to send a 3-second video scan for richer context. Gemini's `generate_content` endpoint doesn't support inline video bytes — that requires the File API, which adds latency and complexity. We switched to single JPEG frames, which Gemini handles instantly and analyzes with surprising depth.
+
+**HTTPS on physical devices.** Camera and GPS both require a secure context in mobile browsers. Running the server locally means demos on a physical phone need ngrok. This added an extra step to every test iteration.
+
+---
+
+## What Makes Seenic Different
+
+Most music apps are passive. You pick a playlist, it plays. The music has nothing to do with where you are or what's around you — it's pulled from a library, not generated for the moment.
+
+Seenic generates music that has never existed before, for a place that exists right now, informed by what the camera actually sees. It's not a recommendation engine. It's not a mood filter on a playlist. It's composition on demand, triggered by physical presence.
+
+The crowdsourcing layer is what separates it further. Other generative music apps are solitary experiences. Seenic makes the world itself into a collaborative instrument. Scan a party — everyone who walks through that door for the next 15 minutes hears party music. Scan a sunrise — the strangers who show up after you get the same gift you gave yourself.
+
+No other app builds a living musical map of the real world as people move through it.
+
+---
+
+## What We're Proud Of
+
+The scan-to-music pipeline working end-to-end in under 15 seconds. Point a camera at something, get original music back that genuinely fits what you were looking at — that moment still feels like magic every time.
+
+The location memory system. The fact that a scan you made 10 minutes ago affects the experience of someone who has never met you, just because they walked close enough — that's the whole thesis of the app, working in code.
+
+The UI. The iPod click wheel aesthetic wasn't just cosmetic. It gave the app a strong identity and made the demo immediately intuitive. People knew what it was before we explained it.
+
+The landing page globe. Particles flowing into a sphere on load, then exploding outward when you enter the map — it took one afternoon and it sells the concept before a single word is read.
+
+---
+
+## What We Learned
+
+Gemini Vision is genuinely good at reading *feel*. We expected it to identify objects. Instead it returned things like "hushed reading room, warm afternoon light, contemplative" — which made for much better music prompts than "library, indoors, people."
+
+Structured JSON output from an LLM is reliable when the prompt is strict. Having Gemini return a bounded schema (mood from a fixed list, energy as 0–1 float, BPM as integer) meant zero post-processing failures across hundreds of test scans.
+
+Clip-based generation can feel continuous with the right UX. A 47-second loop that refreshes in the background on scene change — with a brief crossover period — feels live even when it isn't. The perception of continuity matters more than actual streaming.
+
+Building for a physical demo changes everything. GPS accuracy, camera warmup time, HTTPS requirements on mobile, network latency to the geocoding API — none of these exist in unit tests. The last two hours of every hackathon are really about making the demo path bulletproof.
+
+---
+
+## What's Next
+
+**Lyria RealTime integration.** When `lyria-realtime-exp` access becomes available, the entire passive GPS loop should drive real-time prompt steering over a persistent WebSocket. The music would never stop — it would just slowly become something else as you move. That's the version of Seenic we built toward.
+
+**Persistent pin storage.** Right now pins live in server memory and vanish on restart. A database (even SQLite) would let the musical map persist and grow over time, building a historical record of what people heard where.
+
+**Social layer.** Show who scanned a zone. Let users name their scans. Notify you when someone walks into music you created. Build the social graph of the musical world.
+
+**Richer scene analysis.** The current prompt extracts seven fields from a single frame. With video support (Gemini File API) and multi-frame analysis, the scene understanding could capture movement, crowd density, time of day — producing far more nuanced musical briefs.
+
+**Wearable / ambient mode.** Seenic should run in your pocket, updating silently as you move, with no interaction required. The scan button is for intentional moments. The rest should just happen.
 
 ---
 
@@ -37,11 +112,10 @@ Seenic is a crowdsourced music map. Walk anywhere and AI composes music that mat
 
 ### Install dependencies
 ```bash
-conda activate base
 pip install fastapi uvicorn python-dotenv httpx google-genai pillow
 ```
 
-### Configure API keys
+### Configure keys
 Create `backend/.env`:
 ```
 GEMINI_API_KEY=your_key_here
@@ -54,33 +128,7 @@ cd backend
 python -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-Open `http://localhost:8000` in a browser.
-
-### Mobile (requires HTTPS for camera + GPS)
-```bash
-ngrok http 8000
-# Open the https:// ngrok URL on your phone
-```
-
-### Kill ghost processes on port 8000 (Windows)
-```powershell
-Get-NetTCPConnection -LocalPort 8000 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
-```
-
----
-
-## API Endpoints
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/` | Landing page |
-| `GET` | `/app.html` | Main app |
-| `GET` | `/config` | Returns Maps API key + poll interval |
-| `POST` | `/locate` | lat/lon → reverse geocode → scene → Lyria |
-| `POST` | `/scan` | image + lat/lon → Gemini vision → pin + Lyria |
-| `GET` | `/pins` | All active scan pins (shared across clients) |
-| `GET` | `/audio/clip` | Latest Lyria-generated MP3 |
-| `GET` | `/scene/current` | Current scene + location info |
+Open `http://localhost:8000`. For mobile, use ngrok for HTTPS.
 
 ---
 
@@ -89,24 +137,16 @@ Get-NetTCPConnection -LocalPort 8000 -State Listen | ForEach-Object { Stop-Proce
 ```
 seeniq/
 ├── frontend/
-│   ├── index.html          # Landing page (Three.js globe)
-│   ├── app.html            # Main app (iPod UI + map)
+│   ├── index.html          # Landing page (Three.js particle globe)
+│   ├── app.html            # Main app (iPod UI + live map)
 │   ├── app.js              # GPS loop, scan flow, audio, map rendering
-│   └── style.css           # Retro LCD aesthetic
+│   └── style.css           # Retro green-on-black LCD aesthetic
 ├── backend/
-│   ├── main.py             # FastAPI server, all endpoints
-│   ├── gemini_vision.py    # Gemini vision → SceneDescription
-│   ├── lyria_music.py      # Lyria 3 clip generation + session
+│   ├── main.py             # FastAPI server, all endpoints, pin memory
+│   ├── gemini_vision.py    # Camera frame → Gemini → SceneDescription
+│   ├── lyria_music.py      # SceneDescription → Lyria 3 → MP3 clip
 │   ├── location_mapper.py  # Nominatim geocoding, 22 place presets
 │   ├── scene_mapper.py     # Scene change threshold logic
-│   └── .env                # API keys (not committed)
+│   └── .env                # API keys (gitignored)
 └── .gitignore
 ```
-
----
-
-## Notes
-
-- Pins are stored in memory — a server restart clears all pins
-- Lyria clip generation takes ~5–10 seconds; music starts after the first clip is ready
-- `lyria-realtime-exp` (infinite streaming) requires special API access not available on standard keys; clip-based looping is used instead
