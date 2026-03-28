@@ -26,14 +26,15 @@ const waveformEl = document.getElementById('waveform');
 const scanOverlay   = document.getElementById('scan-overlay');
 const scanVideoEl   = document.getElementById('scan-preview');
 const snapshotCanvas = document.getElementById('snapshot');
+const scanCountEl   = document.getElementById('scan-count');
+const memoryBadge   = document.getElementById('memory-badge');
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let running      = false;
 let scanning     = false;
 let locateTimer  = null;
+let scanCount    = 0;
 let audioCtx     = null;
-let audioWs      = null;
-let workletNode  = null;
 let analyserNode = null;
 let waveformRaf  = null;
 let gmap         = null;
@@ -117,7 +118,20 @@ function paintZone(lat, lon, color) {
 }
 
 function paintScanPin(pin) {
-  if (!gmap) return;  
+  if (!gmap) return;
+
+  // Coverage zone ring — 30 m influence radius, matches server PIN_RADIUS_M
+  new google.maps.Circle({
+    center: { lat: pin.lat, lng: pin.lon },
+    radius: 30,
+    fillColor: pin.zone_color || '#72b872',
+    fillOpacity: 0.07,
+    strokeColor: pin.zone_color || '#72b872',
+    strokeOpacity: 0.55,
+    strokeWeight: 1,
+    map: gmap,
+    zIndex: 50,
+  });
 
   const marker = new google.maps.Marker({
     position: { lat: pin.lat, lng: pin.lon },
@@ -126,8 +140,8 @@ function paintScanPin(pin) {
     icon: {
       path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
       scale: 5,
-      fillColor: '#33ff33',
-      fillOpacity: 0.8,
+      fillColor: '#72b872',
+      fillOpacity: 0.9,
       strokeColor: '#030c03',
       strokeWeight: 2,
     },
@@ -146,51 +160,71 @@ function paintScanPin(pin) {
   pinMarkers.push(marker);
 }
 
+function setMemoryBadge(active) {
+  memoryBadge.hidden = !active;
+}
+
+function addToScanCount(n = 1) {
+  scanCount += n;
+  if (scanCount > 0) {
+    scanCountEl.textContent = `${scanCount} SCAN${scanCount === 1 ? '' : 'S'}`;
+    scanCountEl.hidden = false;
+  }
+}
+
 async function loadExistingPins() {
   try {
     const res = await fetch(`${BACKEND}/pins`);
     if (!res.ok) return;
     const { pins } = await res.json();
     pins.forEach(paintScanPin);
+    if (pins.length > 0) addToScanCount(pins.length);
   } catch { /* non-fatal */ }
 }
 
-// ── Audio ─────────────────────────────────────────────────────────────────────
+// ── Audio (Lyria 3 clip-based) ─────────────────────────────────────────────────
+
+let audioEl = null;
+let clipVersion = 0;  // bumped each time scene changes to bust cache
 
 async function initAudio() {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48_000 });
+  await audioCtx.resume();
 
-  await audioCtx.audioWorklet.addModule('/audio-processor.js');
-  workletNode = new AudioWorkletNode(audioCtx, 'seenic-audio', { outputChannelCount: [2] });
-
+  // Waveform analyser driven by the <audio> element
   analyserNode = audioCtx.createAnalyser();
   analyserNode.fftSize = 256;
-
-  workletNode.connect(analyserNode);
   analyserNode.connect(audioCtx.destination);
 
-  const wsUrl = `${BACKEND.replace('http', 'ws')}/ws/audio`;
-  audioWs = new WebSocket(wsUrl);
-  audioWs.binaryType = 'arraybuffer';
+  audioEl = new Audio();
+  audioEl.crossOrigin = 'anonymous';
 
-  // FIX: Tell the backend we are ready to receive audio chunks
-  audioWs.onopen = () => {
-    audioWs.send('ready'); 
-  };
+  // Route audio element through Web Audio for waveform visualisation
+  const src = audioCtx.createMediaElementSource(audioEl);
+  src.connect(analyserNode);
 
-  audioWs.addEventListener('message', ({ data }) => {
-    // Decode Int16 interleaved stereo → Float32 interleaved, send to worklet
-    const int16  = new Int16Array(data);
-    const float32 = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) {
-      float32[i] = int16[i] / 32768;
-    }
-    workletNode.port.postMessage(float32, [float32.buffer]);
+  audioEl.addEventListener('ended', () => {
+    if (running) _playClip();  // loop: fetch next clip when current one ends
   });
 
-  audioWs.addEventListener('close', () => {
-    if (running) showError('Audio disconnected — tap ▶ to reconnect.');
-  });
+  await _playClip();
+}
+
+async function _playClip() {
+  if (!audioEl || !running) return;
+  try {
+    // Cache-bust so browser doesn't replay old clip after scene change
+    audioEl.src = `${BACKEND}/audio/clip?v=${clipVersion}`;
+    await audioEl.play();
+  } catch (err) {
+    // Clip might not be ready yet — retry in 3s
+    setTimeout(() => { if (running) _playClip(); }, 3000);
+  }
+}
+
+function refreshClip() {
+  clipVersion++;
+  if (audioEl && running) _playClip();
 }
 
 // ── Waveform ──────────────────────────────────────────────────────────────────
@@ -205,7 +239,7 @@ function drawWaveform() {
   analyserNode.getByteTimeDomainData(data);
 
   ctx.clearRect(0, 0, W, H);
-  ctx.strokeStyle = '#33ff33';
+  ctx.strokeStyle = '#72b872';
   ctx.lineWidth   = 1.5;
   ctx.beginPath();
 
@@ -255,6 +289,7 @@ async function locateAndUpdate() {
     const data = await res.json();
     updateNowPlaying(data);
     paintZone(lat, lon, data.zone_color);
+    setMemoryBadge(data.memory_active === true);
     hideError();
   } catch (err) {
     showError(`Locate: ${err.message}`);
@@ -265,9 +300,47 @@ async function locateAndUpdate() {
 
 // ── Camera scan ───────────────────────────────────────────────────────────────
 
+const scanLabel = document.getElementById('scan-label');
+
+/** Pick the first supported video MIME type for MediaRecorder. */
+function _videoMime() {
+  for (const t of ['video/webm;codecs=vp8', 'video/webm', 'video/mp4']) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return null;
+}
+
 /**
- * Capture a compressed JPEG from the video element.
- * Scales down to 800×600 max and uses quality 0.6 to keep upload small (~80 KB).
+ * Record durationMs of video from stream and return a Blob.
+ * Shows a live countdown in the scan overlay label.
+ */
+function recordVideo(stream, mimeType, durationMs = 3000) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let recorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType });
+    } catch (e) { reject(e); return; }
+
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
+    recorder.onerror = e => reject(e.error);
+    recorder.start(200);
+
+    let remaining = Math.round(durationMs / 1000);
+    scanLabel.textContent = `REC ${remaining}s`;
+    const tick = setInterval(() => {
+      remaining--;
+      scanLabel.textContent = remaining > 0 ? `REC ${remaining}s` : 'ANALYZING...';
+      if (remaining <= 0) clearInterval(tick);
+    }, 1000);
+
+    setTimeout(() => { clearInterval(tick); recorder.stop(); }, durationMs);
+  });
+}
+
+/**
+ * Fallback: capture a single compressed JPEG from the video element.
  */
 function captureFrame(video) {
   const MAX_W = 800, MAX_H = 600;
@@ -300,24 +373,32 @@ async function doScan() {
 
   scanVideoEl.srcObject = stream;
   scanOverlay.hidden = false;
+  scanLabel.textContent = 'SCANNING...';
 
-  // Give the camera 1.5 s to stabilize, then capture
-  await new Promise(r => setTimeout(r, 1500));
+  // Give the camera 1 s to stabilize
+  await new Promise(r => setTimeout(r, 1000));
 
-  let blob;
-  try {
+  let blob, fileName, fileType;
+  const videoMime = _videoMime();
+
+  if (videoMime) {
+    try {
+      blob = await recordVideo(stream, videoMime, 3000);
+      fileName = 'scan.webm';
+      fileType = blob.type;
+    } catch {
+      blob = await captureFrame(scanVideoEl);
+      fileName = 'scan.jpg';
+      fileType = 'image/jpeg';
+    }
+  } else {
     blob = await captureFrame(scanVideoEl);
-  } catch {
-    showError('Could not capture frame.');
-    stream.getTracks().forEach(t => t.stop());
-    scanOverlay.hidden = true;
-    scanning = false;
-    btnScan.disabled = false;
-    return;
+    fileName = 'scan.jpg';
+    fileType = 'image/jpeg';
   }
 
-  // Stop camera immediately after capture
   stream.getTracks().forEach(t => t.stop());
+  scanLabel.textContent = 'ANALYZING...';
 
   let position;
   try {
@@ -332,7 +413,7 @@ async function doScan() {
 
   const { latitude: lat, longitude: lon } = position.coords;
   const form = new FormData();
-  form.append('file', blob, 'scan.jpg');
+  form.append('file', new File([blob], fileName, { type: fileType }), fileName);
   form.append('lat', lat);
   form.append('lon', lon);
 
@@ -346,6 +427,8 @@ async function doScan() {
       display_name: data.pin.display_name,
     });
     paintScanPin(data.pin);
+    addToScanCount(1);
+    setMemoryBadge(false);  // freshly scanned — you're the source, not a recipient
     hideError();
   } catch (err) {
     showError(`Scan failed: ${err.message}`);
@@ -372,7 +455,7 @@ function drawAlbumArt(zoneColor) {
   ctx.fillStyle = '#010601';
   ctx.fillRect(0, 0, W, H);
 
-  ctx.fillStyle = '#33ff33';
+  ctx.fillStyle = '#72b872';
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < Math.ceil(cols / 2); c++) {
       if ((seed >> (r * 4 + c)) & 1) {
@@ -399,6 +482,9 @@ function updateNowPlaying({ scene, zone_color, display_name }) {
   npGenre.textContent = scene.suggested_genre;
   npBpm.textContent   = `${scene.suggested_bpm} BPM`;
   npMood.style.background = zone_color;
+
+  // Fetch a fresh clip whenever the scene updates
+  refreshClip();
 }
 
 function setStatus(state) {
@@ -497,9 +583,8 @@ function stopSession() {
   clearInterval(locateTimer);
   cancelAnimationFrame(waveformRaf);
 
-  if (audioWs)  { audioWs.close();  audioWs  = null; }
+  if (audioEl)  { audioEl.pause(); audioEl.src = ''; }
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
-  workletNode = null;
 
   btnPlay.textContent = '▶II';
   btnPlay.classList.remove('playing');

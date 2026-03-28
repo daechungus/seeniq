@@ -26,7 +26,11 @@
     <div id="device">
 
       <div id="device-header">
-        <span class="logo">SEENIC</span>
+        <div class="logo-group">
+          <span class="logo">SEENIC</span>
+          <span class="logo-sub">THE MUSIC MAP</span>
+        </div>
+        <span id="scan-count" hidden></span>
         <span id="gps-tag">GPS&nbsp;NAV</span>
         <div id="status-dot" class="dot-idle"></div>
       </div>
@@ -42,6 +46,7 @@
               <span id="np-mood"  class="badge">--</span>
               <span id="np-genre" class="badge dim">--</span>
               <span id="np-bpm"   class="badge dim">-- BPM</span>
+              <span id="memory-badge" class="badge memory" hidden>ZONE</span>
             </div>
             <canvas id="waveform"></canvas>
           </div>

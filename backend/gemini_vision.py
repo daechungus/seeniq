@@ -20,15 +20,15 @@ _client: genai.Client | None = None
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not api_key:
-            raise RuntimeError("GEMINI_API_KEY is not set in environment / .env")
+            raise RuntimeError("Neither GEMINI_API_KEY nor GOOGLE_API_KEY is set in .env")
         _client = genai.Client(api_key=api_key)
     return _client
 
 
 SCENE_PROMPT = """
-Analyze this image and return ONLY a JSON object with the following fields.
+Analyze this visual scene (image or short video clip) and return ONLY a JSON object with the following fields.
 No markdown, no explanation — raw JSON only.
 
 {
@@ -75,7 +75,7 @@ async def analyze_frame(image_bytes: bytes, mime_type: str = "image/jpeg") -> Sc
     image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
 
     response = await client.aio.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-1.5-flash",
         contents=[image_part, SCENE_PROMPT],
         config=types.GenerateContentConfig(
             temperature=0.4,

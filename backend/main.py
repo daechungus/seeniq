@@ -17,6 +17,7 @@ Run:
 
 import asyncio
 import logging
+import math
 import os
 import time
 import uuid
@@ -24,7 +25,7 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -46,6 +47,10 @@ logger.info("GOOGLE_MAPS_API_KEY present: %s", bool(os.getenv("GOOGLE_MAPS_API_K
 # Data model
 # ---------------------------------------------------------------------------
 
+PIN_RADIUS_M = 30       # metres — within this distance a scanned pin overrides passive GPS
+PIN_TTL_S    = 15 * 60  # 15 minutes — how long a scanned pin influences the area
+
+
 @dataclass
 class Pin:
     id: str
@@ -58,6 +63,40 @@ class Pin:
     bpm: int
     zone_color: str
     timestamp: float = field(default_factory=time.time)
+    scene: SceneDescription | None = field(default=None, repr=False)  # full scene for location memory
+
+
+# ---------------------------------------------------------------------------
+# Location memory helpers
+# ---------------------------------------------------------------------------
+
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6_371_000
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def find_nearby_scene(lat: float, lon: float) -> SceneDescription | None:
+    """
+    Return the SceneDescription of the nearest live pin within PIN_RADIUS_M and PIN_TTL_S.
+    Returns None if no qualifying pin exists.
+    """
+    now = time.time()
+    best_dist = float("inf")
+    best_scene: SceneDescription | None = None
+    for pin in pins.values():
+        if pin.scene is None:
+            continue
+        if now - pin.timestamp > PIN_TTL_S:
+            continue
+        dist = _haversine_m(lat, lon, pin.lat, pin.lon)
+        if dist <= PIN_RADIUS_M and dist < best_dist:
+            best_dist = dist
+            best_scene = pin.scene
+    return best_scene
 
 
 # ---------------------------------------------------------------------------
@@ -70,18 +109,6 @@ previous_scene: SceneDescription | None = None
 current_location: LocationInfo | None = None
 pins: dict[str, Pin] = {}
 
-audio_clients: set[WebSocket] = set()
-
-
-def _broadcast_audio(pcm_bytes: bytes) -> None:
-    dead = set()
-    for ws in audio_clients:
-        try:
-            asyncio.get_event_loop().create_task(ws.send_bytes(pcm_bytes))
-        except Exception:
-            dead.add(ws)
-    audio_clients.difference_update(dead)
-
 
 # ---------------------------------------------------------------------------
 # Lifespan
@@ -90,12 +117,12 @@ def _broadcast_audio(pcm_bytes: bytes) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global lyria
-    lyria = LyriaSession(on_audio=_broadcast_audio)
+    lyria = LyriaSession()
     try:
         await lyria.start()
         logger.info("Lyria session ready")
     except Exception as exc:
-        logger.warning("Could not start Lyria (no API key yet?): %s", exc)
+        logger.warning("Could not start Lyria: %s", exc)
     yield
     if lyria:
         await lyria.stop()
@@ -147,20 +174,25 @@ async def locate_endpoint(body: LocateRequest):
         raise HTTPException(status_code=502, detail=f"Geocoding error: {exc}")
 
     current_location = info
-    scene = location_to_scene(info)
+
+    # Location memory: if a recently scanned pin is nearby, use its scene instead
+    nearby = find_nearby_scene(body.lat, body.lon)
+    scene = nearby if nearby is not None else location_to_scene(info)
     previous_scene = current_scene
     current_scene = scene
 
     if lyria and should_update(previous_scene, current_scene):
         asyncio.create_task(lyria.interpolate_to_scene(current_scene))
-        logger.info("Zone: %s (%s) → %s @ %s BPM",
-                    info.display_name, info.place_type, scene.suggested_genre, scene.suggested_bpm)
+        source = "pin-memory" if nearby else "gps"
+        logger.info("[%s] Zone: %s (%s) → %s @ %s BPM",
+                    source, info.display_name, info.place_type, scene.suggested_genre, scene.suggested_bpm)
 
     return {
         "scene": asdict(current_scene),
         "zone_color": info.zone_color,
         "place_type": info.place_type,
         "display_name": info.display_name,
+        "memory_active": nearby is not None,
     }
 
 
@@ -178,8 +210,12 @@ async def scan_endpoint(
 
     image_bytes = await file.read()
 
+    # Strip codec params (e.g. "video/webm;codecs=vp8" → "video/webm") — Gemini rejects the suffix
+    raw_mime = file.content_type or "image/jpeg"
+    mime_type = raw_mime.split(";")[0].strip()
+
     try:
-        scene = await analyze_frame(image_bytes, file.content_type or "image/jpeg")
+        scene = await analyze_frame(image_bytes, mime_type)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Gemini vision error: {exc}")
 
@@ -212,6 +248,7 @@ async def scan_endpoint(
         genre=scene.suggested_genre,
         bpm=scene.suggested_bpm,
         zone_color=info.zone_color,
+        scene=scene,  # stored for location memory
     )
     pins[pin.id] = pin
 
@@ -248,22 +285,18 @@ async def get_current_scene():
 
 
 # ---------------------------------------------------------------------------
-# WebSocket — audio stream
+# Audio clip endpoint (Lyria 3 clip-based)
 # ---------------------------------------------------------------------------
 
-@app.websocket("/ws/audio")
-async def audio_websocket(ws: WebSocket):
-    """Stream raw 48 kHz stereo 16-bit LE PCM audio to the browser."""
-    await ws.accept()
-    audio_clients.add(ws)
-    logger.info("Audio client connected (%d total)", len(audio_clients))
-    try:
-        await ws.receive_text()
-    except WebSocketDisconnect:
-        pass
-    finally:
-        audio_clients.discard(ws)
-        logger.info("Audio client disconnected (%d remaining)", len(audio_clients))
+@app.get("/audio/clip")
+async def audio_clip():
+    """Return the latest Lyria-generated MP3 clip for the current scene."""
+    if not lyria:
+        raise HTTPException(status_code=503, detail="Lyria not initialised")
+    clip = lyria.get_clip()
+    if not clip:
+        raise HTTPException(status_code=503, detail="Clip not ready yet")
+    return Response(content=clip, media_type="audio/mpeg")
 
 
 # ---------------------------------------------------------------------------
