@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>MusicMap</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Full-screen map -->
+  <div id="map"></div>
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <span class="logo">MusicMap</span>
+    <div id="status-dot" class="dot-idle"></div>
+  </div>
+
+  <!-- Now-playing card (bottom sheet) -->
+  <div id="now-playing">
+    <div id="zone-color-bar"></div>
+    <div id="np-content">
+      <div id="np-place">Tap play to start</div>
+      <div id="np-meta">
+        <span id="np-mood" class="badge">—</span>
+        <span id="np-genre" class="badge secondary">—</span>
+        <span id="np-bpm" class="badge secondary">— BPM</span>
+      </div>
+      <canvas id="waveform"></canvas>
+    </div>
+  </div>
+
+  <!-- Play button (floating) -->
+  <button type="button" id="btn-play" class="fab" aria-label="Play">▶</button>
+
+  <!-- Error toast -->
+  <div id="error-toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
