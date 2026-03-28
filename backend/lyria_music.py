@@ -89,11 +89,16 @@ class LyriaSession:
                     response_modalities=["AUDIO"],
                 ),
             )
-            for part in response.candidates[0].content.parts:
+            cands = response.candidates or []
+            content = cands[0].content if cands else None
+            parts = content.parts if content else []
+            for part in parts:
                 if part.inline_data and part.inline_data.mime_type.startswith("audio"):
                     self._current_clip = part.inline_data.data
                     logger.info("Lyria clip ready: %d bytes", len(self._current_clip))
                     break
+            else:
+                logger.warning("Lyria response had no audio part (parts=%d)", len(parts))
         except Exception as exc:
             logger.error("Lyria clip generation failed: %s", exc)
         finally:

@@ -238,6 +238,14 @@ async def scan_endpoint(
         await lyria.update_scene(scene)
         logger.info("Scan pin: %s → %s @ %s BPM", info.display_name, scene.suggested_genre, scene.suggested_bpm)
 
+    # Remove any existing pins within PIN_RADIUS_M — one scan per spot
+    to_remove = [
+        pid for pid, p in pins.items()
+        if _haversine_m(lat, lon, p.lat, p.lon) <= PIN_RADIUS_M
+    ]
+    for pid in to_remove:
+        del pins[pid]
+
     pin = Pin(
         id=str(uuid.uuid4()),
         lat=lat,
@@ -252,7 +260,7 @@ async def scan_endpoint(
     )
     pins[pin.id] = pin
 
-    return {"scene": asdict(scene), "pin": asdict(pin)}
+    return {"scene": asdict(scene), "pin": asdict(pin), "replaced": len(to_remove)}
 
 
 @app.get("/pins")

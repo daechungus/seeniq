@@ -41,6 +41,7 @@ let gmap         = null;
 let playerMarker = null;
 const zoneCircles = [];
 const pinMarkers  = [];
+const pinCircles  = [];
 
 // ── Google Maps ───────────────────────────────────────────────────────────────
 
@@ -121,7 +122,7 @@ function paintScanPin(pin) {
   if (!gmap) return;
 
   // Coverage zone ring — 30 m influence radius, matches server PIN_RADIUS_M
-  new google.maps.Circle({
+  const ring = new google.maps.Circle({
     center: { lat: pin.lat, lng: pin.lon },
     radius: 30,
     fillColor: pin.zone_color || '#72b872',
@@ -132,11 +133,11 @@ function paintScanPin(pin) {
     map: gmap,
     zIndex: 50,
   });
+  pinCircles.push(ring);
 
   const marker = new google.maps.Marker({
     position: { lat: pin.lat, lng: pin.lon },
     map: gmap,
-    title: `${pin.display_name}\n${pin.genre} · ${pin.bpm} BPM`,
     icon: {
       path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
       scale: 5,
@@ -145,19 +146,18 @@ function paintScanPin(pin) {
       strokeColor: '#030c03',
       strokeWeight: 2,
     },
+    clickable: false,
     zIndex: 100,
   });
 
-  const infoWindow = new google.maps.InfoWindow({
-    content: `<div style="color:#0d0d12;font-family:sans-serif;font-size:13px;padding:4px 2px">
-      <strong>${pin.display_name}</strong><br>
-      ${pin.scene_description}<br>
-      <span style="color:#555">${pin.genre} · ${pin.bpm} BPM</span>
-    </div>`,
-  });
-
-  marker.addListener('click', () => infoWindow.open(gmap, marker));
   pinMarkers.push(marker);
+}
+
+function clearScanPins() {
+  pinMarkers.forEach(m => m.setMap(null));
+  pinMarkers.length = 0;
+  pinCircles.forEach(c => c.setMap(null));
+  pinCircles.length = 0;
 }
 
 function setMemoryBadge(active) {
@@ -178,7 +178,14 @@ async function loadExistingPins() {
     if (!res.ok) return;
     const { pins } = await res.json();
     pins.forEach(paintScanPin);
-    if (pins.length > 0) addToScanCount(pins.length);
+    // Set count to actual server state
+    scanCount = pins.length;
+    if (scanCount > 0) {
+      scanCountEl.textContent = `${scanCount} SCAN${scanCount === 1 ? '' : 'S'}`;
+      scanCountEl.hidden = false;
+    } else {
+      scanCountEl.hidden = true;
+    }
   } catch { /* non-fatal */ }
 }
 
@@ -378,24 +385,11 @@ async function doScan() {
   // Give the camera 1 s to stabilize
   await new Promise(r => setTimeout(r, 1000));
 
-  let blob, fileName, fileType;
-  const videoMime = _videoMime();
-
-  if (videoMime) {
-    try {
-      blob = await recordVideo(stream, videoMime, 3000);
-      fileName = 'scan.webm';
-      fileType = blob.type;
-    } catch {
-      blob = await captureFrame(scanVideoEl);
-      fileName = 'scan.jpg';
-      fileType = 'image/jpeg';
-    }
-  } else {
-    blob = await captureFrame(scanVideoEl);
-    fileName = 'scan.jpg';
-    fileType = 'image/jpeg';
-  }
+  // Gemini generate_content only supports inline image bytes (not video/webm).
+  // Always capture a single JPEG frame.
+  const blob = await captureFrame(scanVideoEl);
+  const fileName = 'scan.jpg';
+  const fileType = 'image/jpeg';
 
   stream.getTracks().forEach(t => t.stop());
   scanLabel.textContent = 'ANALYZING...';
@@ -426,8 +420,9 @@ async function doScan() {
       zone_color: data.pin.zone_color,
       display_name: data.pin.display_name,
     });
-    paintScanPin(data.pin);
-    addToScanCount(1);
+    // Redraw all pins fresh (server already removed the replaced nearby ones)
+    clearScanPins();
+    await loadExistingPins();
     setMemoryBadge(false);  // freshly scanned — you're the source, not a recipient
     hideError();
   } catch (err) {
