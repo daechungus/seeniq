@@ -75,7 +75,7 @@ async def analyze_frame(image_bytes: bytes, mime_type: str = "image/jpeg") -> Sc
     image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
 
     response = await client.aio.models.generate_content(
-        model="gemini-2.0-flash-exp",
+        model="gemini-2.0-flash",
         contents=[image_part, SCENE_PROMPT],
         config=types.GenerateContentConfig(
             temperature=0.4,

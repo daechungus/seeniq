@@ -34,9 +34,13 @@ from location_mapper import LocationInfo, location_to_scene, reverse_geocode
 from lyria_music import LyriaSession
 from scene_mapper import fallback_scene, should_update
 
-load_dotenv()
+from pathlib import Path
+_env_path = Path(__file__).resolve().parent / ".env"
+load_dotenv(_env_path)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.info("ENV loaded from %s", _env_path)
+logger.info("GOOGLE_MAPS_API_KEY present: %s", bool(os.getenv("GOOGLE_MAPS_API_KEY")))
 
 # ---------------------------------------------------------------------------
 # Data model

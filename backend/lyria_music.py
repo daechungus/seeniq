@@ -67,7 +67,7 @@ class LyriaSession:
 
         # The session is entered as an async context manager; we keep a
         # reference so we can steer it later from update_scene().
-        self._cm = self._client.aio.live.music.connect(model="lyria-realtime-exp")
+        self._cm = self._client.aio.live.music.connect(model="lyria-realtime-exp-003")
         self._session = await self._cm.__aenter__()
 
         # Kick off with a neutral ambient prompt so audio starts immediately
